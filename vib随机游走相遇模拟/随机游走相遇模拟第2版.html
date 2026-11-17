@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>随机游走相遇模拟 · 实验仪器版</title>
+<style>
+  :root{
+    color-scheme:dark;
+    --bg:#080d11;
+    --field:#0b1217;
+    --panel:#101820;
+    --panel-strong:#14202a;
+    --line:#26343d;
+    --line-soft:rgba(157,184,192,.10);
+    --text:#edf2ef;
+    --muted:#91a0a7;
+    --dim:#66757d;
+    --a:#55b8e8;
+    --a-soft:rgba(85,184,232,.16);
+    --b:#f08a5d;
+    --b-soft:rgba(240,138,93,.16);
+    --accent:#e2b35f;
+    --accent-soft:rgba(226,179,95,.13);
+    --focus:#f3cc83;
+    --radius:8px;
+  }
+
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;width:100%;height:100%;overflow:hidden}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  }
+
+  #cv{
+    position:fixed;
+    inset:0;
+    display:block;
+    width:100%;
+    height:100%;
+  }
+
+  .panel{
+    position:fixed;
+    z-index:10;
+    top:24px;
+    left:24px;
+    width:292px;
+    padding:18px;
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    background:var(--panel);
+    box-shadow:0 18px 46px rgba(0,0,0,.34);
+    user-select:none;
+  }
+
+  .panel::after{
+    content:"";
+    position:absolute;
+    top:-1px;
+    right:18px;
+    width:42px;
+    height:2px;
+    background:var(--accent);
+  }
+
+  .eyebrow{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin:0 0 12px;
+    color:var(--dim);
+    font-family:ui-monospace,"SF Mono",Consolas,monospace;
+    font-size:10px;
+    font-weight:600;
+    letter-spacing:0;
+  }
+
+  .eyebrow::before{
+    content:"";
+    width:6px;
+    height:6px;
+    border-radius:1px;
+    background:var(--accent);
+    box-shadow:0 0 0 3px var(--accent-soft);
+  }
+
+  .eyebrow span:last-child{
+    margin-left:auto;
+    color:var(--muted);
+  }
+
+  h1{
+    margin:0 0 7px;
+    font-size:20px;
+    line-height:1.25;
+    font-weight:600;
+  }
+
+  .intro{
+    margin:0 0 16px;
+    color:var(--muted);
+    font-size:12px;
+    line-height:1.6;
+  }
+
+  .controls{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+    margin-bottom:16px;
+  }
+
+  button{
+    min-width:0;
+    height:40px;
+    padding:0 12px;
+    border:1px solid var(--line);
+    border-radius:6px;
+    background:var(--panel-strong);
+    color:var(--text);
+    font:inherit;
+    font-size:12px;
+    font-weight:500;
+    cursor:pointer;
+    transition:background-color .14s ease,border-color .14s ease,color .14s ease;
+  }
+
+  button:hover{
+    background:#192833;
+    border-color:#3a4c56;
+  }
+
+  button:active{
+    transform:translateY(1px);
+  }
+
+  button:focus-visible{
+    outline:2px solid var(--focus);
+    outline-offset:2px;
+  }
+
+  button.primary{
+    grid-column:1/-1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    border-color:#d9e4e2;
+    background:#e7eeea;
+    color:#10171b;
+    font-weight:600;
+  }
+
+  button.primary:hover{
+    border-color:#fff;
+    background:#fff;
+  }
+
+  button.is-active{
+    border-color:rgba(226,179,95,.62);
+    background:var(--accent-soft);
+    color:#f3d79e;
+  }
+
+  .kbd{
+    padding:2px 5px;
+    border:1px solid rgba(16,23,27,.28);
+    border-radius:3px;
+    font-family:ui-monospace,"SF Mono",Consolas,monospace;
+    font-size:9px;
+    font-weight:600;
+    opacity:.62;
+  }
+
+  .stats{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    margin:0;
+    border-top:1px solid var(--line);
+    border-bottom:1px solid var(--line);
+  }
+
+  .stat{
+    min-width:0;
+    padding:12px 0 11px;
+  }
+
+  .stat:nth-child(odd){
+    padding-right:12px;
+    border-right:1px solid var(--line);
+  }
+
+  .stat:nth-child(even){
+    padding-left:14px;
+  }
+
+  .stat:nth-child(-n+2){
+    border-bottom:1px solid var(--line);
+  }
+
+  dt{
+    margin:0 0 5px;
+    color:var(--dim);
+    font-size:10px;
+    line-height:1.2;
+  }
+
+  dd{
+    margin:0;
+    overflow:hidden;
+    color:var(--text);
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    font-size:19px;
+    font-variant-numeric:tabular-nums;
+    line-height:1.15;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+
+  #sLast{
+    color:var(--accent);
+    font-size:15px;
+  }
+
+  .legend{
+    display:flex;
+    align-items:center;
+    gap:18px;
+    margin-top:13px;
+    color:var(--muted);
+    font-size:11px;
+  }
+
+  .legend span{
+    display:inline-flex;
+    align-items:center;
+    gap:7px;
+  }
+
+  .legend i{
+    display:inline-block;
+    width:12px;
+    height:3px;
+    border-radius:2px;
+    background:var(--a);
+  }
+
+  .legend span:last-child i{
+    height:0;
+    border-top:2px dashed var(--b);
+    border-radius:0;
+    background:transparent;
+  }
+
+  .toast{
+    position:absolute;
+    top:calc(100% + 8px);
+    left:0;
+    right:0;
+    padding:10px 12px;
+    border:1px solid rgba(226,179,95,.48);
+    border-radius:6px;
+    background:#161b1c;
+    color:#f0d39b;
+    box-shadow:0 12px 30px rgba(0,0,0,.28);
+    font-size:11px;
+    line-height:1.45;
+    opacity:0;
+    transform:translateY(-4px);
+    pointer-events:none;
+    transition:opacity .22s ease,transform .22s ease;
+  }
+
+  .toast.show{
+    opacity:1;
+    transform:translateY(0);
+  }
+
+  .canvas-error{
+    margin:14px 0 0;
+    padding:10px 12px;
+    border:1px solid rgba(240,138,93,.46);
+    border-radius:6px;
+    background:var(--b-soft);
+    color:#ffc4aa;
+    font-size:12px;
+    line-height:1.5;
+  }
+
+  @media (max-width:560px){
+    .panel{
+      top:auto;
+      right:max(12px,env(safe-area-inset-right));
+      bottom:max(12px,env(safe-area-inset-bottom));
+      left:max(12px,env(safe-area-inset-left));
+      width:auto;
+      padding:14px;
+    }
+
+    .eyebrow{
+      margin-bottom:9px;
+    }
+
+    h1{
+      font-size:18px;
+    }
+
+    .intro{
+      margin-bottom:12px;
+      font-size:11px;
+    }
+
+    .controls{
+      margin-bottom:12px;
+    }
+
+    button{
+      height:42px;
+    }
+
+    .stat{
+      padding-top:9px;
+      padding-bottom:9px;
+    }
+
+    dd{
+      font-size:18px;
+    }
+
+    .legend{
+      margin-top:10px;
+    }
+
+    .toast{
+      top:auto;
+      bottom:calc(100% + 8px);
+      transform:translateY(4px);
+    }
+
+    .toast.show{
+      transform:translateY(0);
+    }
+  }
+
+  @media (max-width:360px){
+    .panel{
+      padding:12px;
+    }
+
+    .intro{
+      display:none;
+    }
+
+    .controls{
+      margin-bottom:10px;
+    }
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    button,.toast{
+      transition:none;
+    }
+
+    button:active{
+      transform:none;
+    }
+  }
+</style>
+</head>
+<body>
+<canvas id="cv" role="img" aria-label="甲和乙的随机游走轨迹"></canvas>
+
+<main class="panel" id="panel">
+  <div class="eyebrow">
+    <span>RANDOM WALK</span>
+    <span>RUN 02</span>
+  </div>
+
+  <h1>两个随机游走的人</h1>
+  <p class="intro">两人从同一原点出发，每一步各自随机移动一格，轨迹会持续保留。</p>
+
+  <div class="controls">
+    <button id="stepBtn" class="primary" type="button">
+      走一步
+      <span class="kbd" aria-hidden="true">SPACE</span>
+    </button>
+    <button id="autoBtn" type="button" aria-pressed="false">自动</button>
+    <button id="resetBtn" type="button">重置</button>
+  </div>
+
+  <dl class="stats">
+    <div class="stat">
+      <dt>步数</dt>
+      <dd id="sSteps">0</dd>
+    </div>
+    <div class="stat">
+      <dt>直线距离</dt>
+      <dd id="sDist">0.0</dd>
+    </div>
+    <div class="stat">
+      <dt>相遇次数</dt>
+      <dd id="sMeet">0</dd>
+    </div>
+    <div class="stat">
+      <dt>最近相遇</dt>
+      <dd id="sLast">--</dd>
+    </div>
+  </dl>
+
+  <div class="legend" aria-label="轨迹图例">
+    <span><i aria-hidden="true"></i>甲 · 实线</span>
+    <span><i aria-hidden="true"></i>乙 · 虚线</span>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</main>
+
+<noscript>
+  <p class="canvas-error">需要启用 JavaScript 才能运行模拟。</p>
+</noscript>
+
+<script>
+(function () {
+  'use strict';
+
+  const cv = document.getElementById('cv');
+  const panel = document.getElementById('panel');
+  const ctx = cv.getContext('2d');
+  const stepBtn = document.getElementById('stepBtn');
+  const autoBtn = document.getElementById('autoBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const sSteps = document.getElementById('sSteps');
+  const sDist = document.getElementById('sDist');
+  const sMeet = document.getElementById('sMeet');
+  const sLast = document.getElementById('sLast');
+  const toast = document.getElementById('toast');
+
+  if (!ctx) {
+    const message = document.createElement('p');
+    message.className = 'canvas-error';
+    message.textContent = '当前浏览器无法创建绘图画布，请尝试更新浏览器后重新打开。';
+    panel.appendChild(message);
+    stepBtn.disabled = true;
+    autoBtn.disabled = true;
+    return;
+  }
+
+  const DIRECTIONS = Object.freeze([
+    Object.freeze([0, 1]),
+    Object.freeze([0, -1]),
+    Object.freeze([-1, 0]),
+    Object.freeze([1, 0])
+  ]);
+
+  const COLORS = Object.freeze({
+    background: '#0b1217',
+    grid: 'rgba(147,177,184,.10)',
+    gridMajor: 'rgba(147,177,184,.18)',
+    border: 'rgba(173,199,203,.22)',
+    origin: 'rgba(226,235,231,.42)',
+    a: '#55b8e8',
+    b: '#f08a5d',
+    accent: '#e2b35f',
+    markerHole: '#0b1217'
+  });
+
+  const AUTO_DELAY = 130;
+  const reducedMotion = window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const state = {
+    paths: { a: [{ x: 0, y: 0 }], b: [{ x: 0, y: 0 }] },
+    steps: 0,
+    meetings: 0,
+    lastMeet: null,
+    bounds: { minX: 0, maxX: 0, minY: 0, maxY: 0 },
+    pulse: 0,
+    running: false,
+    rafId: null
+  };
+
+  let DPR = 1;
+  let W = 0;
+  let H = 0;
+  let lastAutoTime = 0;
+  let toastTimer = null;
+
+  function growBounds(point) {
+    if (point.x < state.bounds.minX) state.bounds.minX = point.x;
+    if (point.x > state.bounds.maxX) state.bounds.maxX = point.x;
+    if (point.y < state.bounds.minY) state.bounds.minY = point.y;
+    if (point.y > state.bounds.maxY) state.bounds.maxY = point.y;
+  }
+
+  function updateUI() {
+    const a = state.paths.a[state.paths.a.length - 1];
+    const b = state.paths.b[state.paths.b.length - 1];
+    sSteps.textContent = String(state.steps);
+    sDist.textContent = Math.hypot(a.x - b.x, a.y - b.y).toFixed(1);
+    sMeet.textContent = String(state.meetings);
+    sLast.textContent = state.lastMeet === null ? '--' : '第 ' + state.lastMeet + ' 步';
+  }
+
+  function showToast(message) {
+    clearTimeout(toastTimer);
+    toast.textContent = message;
+    toast.classList.add('show');
+    toastTimer = setTimeout(function () {
+      toast.classList.remove('show');
+    }, 2200);
+  }
+
+  function hideToast() {
+    clearTimeout(toastTimer);
+    toastTimer = null;
+    toast.classList.remove('show');
+    toast.textContent = '';
+  }
+
+  function takeStep() {
+    const indexA = (Math.random() * DIRECTIONS.length) | 0;
+    const indexB = (Math.random() * DIRECTIONS.length) | 0;
+    const directionA = DIRECTIONS[indexA];
+    const directionB = DIRECTIONS[indexB];
+    const previousA = state.paths.a[state.paths.a.length - 1];
+    const previousB = state.paths.b[state.paths.b.length - 1];
+    const nextA = { x: previousA.x + directionA[0], y: previousA.y + directionA[1] };
+    const nextB = { x: previousB.x + directionB[0], y: previousB.y + directionB[1] };
+
+    state.paths.a.push(nextA);
+    state.paths.b.push(nextB);
+    growBounds(nextA);
+    growBounds(nextB);
+    state.steps += 1;
+
+    if (nextA.x === nextB.x && nextA.y === nextB.y) {
+      state.meetings += 1;
+      state.lastMeet = state.steps;
+      if (!reducedMotion) state.pulse = 1;
+      showToast('第 ' + state.steps + ' 步，两人再次到达同一点。');
+    }
+
+    updateUI();
+  }
+
+  function setAutoUI(running) {
+    autoBtn.classList.toggle('is-active', running);
+    autoBtn.setAttribute('aria-pressed', running ? 'true' : 'false');
+    autoBtn.textContent = running ? '暂停' : '自动';
+  }
+
+  function resetSimulation() {
+    if (state.rafId !== null) {
+      cancelAnimationFrame(state.rafId);
+      state.rafId = null;
+    }
+
+    state.paths.a = [{ x: 0, y: 0 }];
+    state.paths.b = [{ x: 0, y: 0 }];
+    state.steps = 0;
+    state.meetings = 0;
+    state.lastMeet = null;
+    state.bounds = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
+    state.pulse = 0;
+    state.running = false;
+    lastAutoTime = 0;
+
+    setAutoUI(false);
+    hideToast();
+    updateUI();
+    kick();
+  }
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = Math.max(1, window.innerWidth);
+    H = Math.max(1, window.innerHeight);
+    cv.width = Math.round(W * DPR);
+    cv.height = Math.round(H * DPR);
+    cv.style.width = W + 'px';
+    cv.style.height = H + 'px';
+    kick();
+  }
+
+  function getPlotRect() {
+    const edge = Math.max(16, Math.min(W, H) * 0.026);
+    const gap = 22;
+    const panelRect = panel.getBoundingClientRect();
+    const panelIsBottom = panelRect.top > H * 0.5 || panelRect.width > W * 0.65;
+
+    if (!panelIsBottom && panelRect.left < W * 0.52) {
+      return {
+        left: Math.min(W - edge, panelRect.right + gap),
+        top: edge,
+        right: W - edge,
+        bottom: H - edge
+      };
+    }
+
+    return {
+      left: edge,
+      top: edge,
+      right: W - edge,
+      bottom: Math.max(edge, panelRect.top - gap)
+    };
+  }
+
+  function drawFieldBorder(plot) {
+    const length = 18;
+    ctx.beginPath();
+    ctx.moveTo(plot.left, plot.top + length);
+    ctx.lineTo(plot.left, plot.top);
+    ctx.lineTo(plot.left + length, plot.top);
+    ctx.moveTo(plot.right - length, plot.top);
+    ctx.lineTo(plot.right, plot.top);
+    ctx.lineTo(plot.right, plot.top + length);
+    ctx.moveTo(plot.right, plot.bottom - length);
+    ctx.lineTo(plot.right, plot.bottom);
+    ctx.lineTo(plot.right - length, plot.bottom);
+    ctx.moveTo(plot.left + length, plot.bottom);
+    ctx.lineTo(plot.left, plot.bottom);
+    ctx.lineTo(plot.left, plot.bottom - length);
+    ctx.strokeStyle = COLORS.border;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  function drawGrid(plot, originX, originY, cell) {
+    if (cell < 14) return;
+
+    const startX = originX + Math.ceil((plot.left - originX) / cell) * cell;
+    const startY = originY + Math.ceil((plot.top - originY) / cell) * cell;
+
+    ctx.beginPath();
+    for (let x = startX; x <= plot.right; x += cell) {
+      const screenX = Math.round(x) + 0.5;
+      ctx.moveTo(screenX, plot.top);
+      ctx.lineTo(screenX, plot.bottom);
+    }
+    for (let y = startY; y <= plot.bottom; y += cell) {
+      const screenY = Math.round(y) + 0.5;
+      ctx.moveTo(plot.left, screenY);
+      ctx.lineTo(plot.right, screenY);
+    }
+    ctx.strokeStyle = COLORS.grid;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(Math.round(originX) + 0.5, plot.top);
+    ctx.lineTo(Math.round(originX) + 0.5, plot.bottom);
+    ctx.moveTo(plot.left, Math.round(originY) + 0.5);
+    ctx.lineTo(plot.right, Math.round(originY) + 0.5);
+    ctx.strokeStyle = COLORS.gridMajor;
+    ctx.stroke();
+  }
+
+  function strokePath(points, color, dashed, originX, originY, cell) {
+    if (points.length < 2) return;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(originX + points[0].x * cell, originY - points[0].y * cell);
+    for (let i = 1; i < points.length; i += 1) {
+      ctx.lineTo(originX + points[i].x * cell, originY - points[i].y * cell);
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.9;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = dashed ? 0.74 : 0.86;
+    ctx.setLineDash(dashed ? [5, 4] : []);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawCircleMarker(x, y, radius, color) {
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x, y, radius * 0.34, 0, Math.PI * 2);
+    ctx.fillStyle = COLORS.markerHole;
+    ctx.fill();
+  }
+
+  function drawDiamondMarker(x, y, radius, color) {
+    ctx.beginPath();
+    ctx.moveTo(x, y - radius);
+    ctx.lineTo(x + radius, y);
+    ctx.lineTo(x, y + radius);
+    ctx.lineTo(x - radius, y);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(x, y - radius * 0.32);
+    ctx.lineTo(x + radius * 0.32, y);
+    ctx.lineTo(x, y + radius * 0.32);
+    ctx.lineTo(x - radius * 0.32, y);
+    ctx.closePath();
+    ctx.fillStyle = COLORS.markerHole;
+    ctx.fill();
+  }
+
+  function drawMarkers(pointA, pointB, originX, originY, cell) {
+    const xA = originX + pointA.x * cell;
+    const yA = originY - pointA.y * cell;
+    const xB = originX + pointB.x * cell;
+    const yB = originY - pointB.y * cell;
+    const radius = Math.max(4, Math.min(7, cell * 0.13));
+
+    if (pointA.x === pointB.x && pointA.y === pointB.y) {
+      ctx.beginPath();
+      ctx.arc(xA, yA, radius + 4, 0, Math.PI * 2);
+      ctx.strokeStyle = COLORS.a;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      drawDiamondMarker(xB, yB, radius * 0.76, COLORS.b);
+      return;
+    }
+
+    drawCircleMarker(xA, yA, radius, COLORS.a);
+    drawDiamondMarker(xB, yB, radius, COLORS.b);
+  }
+
+  function draw() {
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = COLORS.background;
+    ctx.fillRect(0, 0, W, H);
+
+    const plot = getPlotRect();
+    if (plot.right - plot.left < 120 || plot.bottom - plot.top < 120) return;
+
+    const spanX = Math.max(1, state.bounds.maxX - state.bounds.minX);
+    const spanY = Math.max(1, state.bounds.maxY - state.bounds.minY);
+    const padding = Math.max(28, Math.min(plot.right - plot.left, plot.bottom - plot.top) * 0.08);
+    const availableWidth = Math.max(40, plot.right - plot.left - padding * 2);
+    const availableHeight = Math.max(40, plot.bottom - plot.top - padding * 2);
+    const cell = Math.max(2, Math.min(56, availableWidth / spanX, availableHeight / spanY));
+    const middleX = (state.bounds.minX + state.bounds.maxX) / 2;
+    const middleY = (state.bounds.minY + state.bounds.maxY) / 2;
+    const plotCenterX = (plot.left + plot.right) / 2;
+    const plotCenterY = (plot.top + plot.bottom) / 2;
+    const originX = plotCenterX - middleX * cell;
+    const originY = plotCenterY + middleY * cell;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(plot.left, plot.top, plot.right - plot.left, plot.bottom - plot.top);
+    ctx.clip();
+
+    drawGrid(plot, originX, originY, cell);
+
+    ctx.beginPath();
+    ctx.moveTo(originX - 5, originY);
+    ctx.lineTo(originX + 5, originY);
+    ctx.moveTo(originX, originY - 5);
+    ctx.lineTo(originX, originY + 5);
+    ctx.strokeStyle = COLORS.origin;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    strokePath(state.paths.a, COLORS.a, false, originX, originY, cell);
+    strokePath(state.paths.b, COLORS.b, true, originX, originY, cell);
+
+    if (state.pulse > 0 && state.lastMeet !== null) {
+      const meetingPoint = state.paths.a[state.lastMeet];
+      const progress = 1 - state.pulse;
+      const x = originX + meetingPoint.x * cell;
+      const y = originY - meetingPoint.y * cell;
+      ctx.beginPath();
+      ctx.arc(x, y, 8 + progress * 34, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(226,179,95,' + (state.pulse * 0.82).toFixed(3) + ')';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    drawMarkers(
+      state.paths.a[state.paths.a.length - 1],
+      state.paths.b[state.paths.b.length - 1],
+      originX,
+      originY,
+      cell
+    );
+
+    ctx.restore();
+    drawFieldBorder(plot);
+  }
+
+  function kick() {
+    if (state.rafId === null) {
+      state.rafId = requestAnimationFrame(loop);
+    }
+  }
+
+  function loop(time) {
+    state.rafId = null;
+
+    if (state.running && time - lastAutoTime >= AUTO_DELAY) {
+      lastAutoTime = time;
+      takeStep();
+    }
+
+    if (state.pulse > 0) {
+      state.pulse *= 0.94;
+      if (state.pulse < 0.01) state.pulse = 0;
+    }
+
+    draw();
+
+    if (state.running || state.pulse > 0) {
+      state.rafId = requestAnimationFrame(loop);
+    }
+  }
+
+  stepBtn.addEventListener('click', function () {
+    takeStep();
+    kick();
+  });
+
+  autoBtn.addEventListener('click', function () {
+    state.running = !state.running;
+    lastAutoTime = performance.now() - AUTO_DELAY;
+    setAutoUI(state.running);
+    kick();
+  });
+
+  resetBtn.addEventListener('click', resetSimulation);
+
+  window.addEventListener('keydown', function (event) {
+    if (event.code === 'Space') {
+      event.preventDefault();
+      takeStep();
+      kick();
+    }
+  });
+
+  window.addEventListener('resize', resize);
+
+  if ('ResizeObserver' in window) {
+    new ResizeObserver(function () {
+      kick();
+    }).observe(panel);
+  }
+
+  resize();
+  resetSimulation();
+})();
+</script>
+</body>
+</html>
