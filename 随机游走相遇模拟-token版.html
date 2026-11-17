@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>随机游走 · 两个人还能再相遇吗</title>
+<style>
+  /* ============================================================
+     1. Primitive tokens — 原始值（canvas 的 JS 也从这里读取）
+     ============================================================ */
+  :root{
+    /* 中性夜 ramp（ink） */
+    --ink-950:#090b10;          /* 画布晕影边缘 */
+    --ink-900:#0b0d14;          /* 页面底色 */
+    --ink-800:#0e1016;          /* 画布晕影中心 */
+    --ink-700:#12141b;          /* 面板实色（焦点环衬底） */
+    --panel-solid:18,20,27;     /* 面板 RGB（用于半透明表面） */
+    /* 浅色文字 */
+    --paper-50:#eef0f5;         /* 主文字、主按钮填充 */
+    --paper-100:#ffffff;        /* 主按钮 hover */
+    --slate-300:#c9d1de;        /* 次级按钮文字 */
+    --slate-400:#a3a9b8;        /* 次要文字 */
+    --slate-500:#7a8296;        /* 弱化文字 */
+    /* 两条轨迹 + 相遇时刻 */
+    --blue-400:#4ea8ff;         /* 甲 */
+    --orange-400:#ff7a59;       /* 乙 */
+    --amber-rgb:242,178,90;     /* 相遇脉冲 RGB（JS 用来合成 alpha） */
+    --amber-200:#e8b26a;        /* 相遇文字（琥珀提亮） */
+    /* 中性透明度阶梯 */
+    --white-4:rgba(255,255,255,.04);
+    --white-5:rgba(255,255,255,.05);
+    --white-8:rgba(255,255,255,.08);
+    --white-10:rgba(255,255,255,.10);
+    --white-16:rgba(255,255,255,.16);
+    --white-30:rgba(255,255,255,.30);
+    --dot-ring:rgba(9,11,16,.45);   /* 位置点描边 */
+    /* 间距（4px 基准） */
+    --space-1:4px;
+    --space-2:8px;
+    --space-3:12px;
+    --space-4:16px;
+    /* 圆角 */
+    --radius-sm:4px;   /* 键帽 */
+    --radius-md:8px;   /* 按钮、toast */
+    --radius-lg:16px;  /* 面板 */
+    /* 字号 */
+    --font-xs:11px;    /* 键帽 */
+    --font-sm:12px;    /* 副标题、图例、toast */
+    --font-base:13px;  /* 按钮、统计 */
+    --font-md:14px;    /* 标题 */
+    --leading-tight:1.5;
+    --leading-relaxed:1.6;
+    /* 动效 */
+    --duration-fast:150ms;
+    --duration-normal:300ms;
+    --ease:cubic-bezier(.22,1,.36,1);
+  }
+
+  /* ============================================================
+     2. Semantic tokens — 按用途命名
+     ============================================================ */
+  :root{
+    --color-bg:var(--ink-900);
+    --color-surface:rgba(var(--panel-solid),.92);
+    --color-raised:var(--white-10);
+    --color-line:var(--white-8);
+    --color-line-strong:var(--white-16);
+    --color-text:var(--paper-50);
+    --color-text-2:var(--slate-400);
+    --color-text-3:var(--slate-500);
+    --color-accent:rgb(var(--amber-rgb));
+    --color-series-a:var(--blue-400);
+    --color-series-b:var(--orange-400);
+  }
+
+  /* ============================================================
+     3. Component tokens — 组件专属
+     ============================================================ */
+  :root{
+    /* panel */
+    --panel-width:240px;
+    --panel-pad:var(--space-4);
+    --panel-radius:var(--radius-lg);
+    /* button */
+    --btn-h:32px;
+    --btn-radius:var(--radius-md);
+    --btn-bg:var(--white-4);
+    --btn-bg-hover:var(--white-8);
+    --btn-bg-on:var(--color-raised);
+    --btn-fg:var(--slate-300);
+    --btn-fg-hover:var(--color-text);
+    --btn-border:var(--color-line);
+    --btn-border-on:var(--color-line-strong);
+    --btn-primary-bg:var(--color-text);
+    --btn-primary-bg-hover:var(--paper-100);
+    --btn-primary-fg:var(--color-bg);
+    --btn-focus-ring:0 0 0 2px var(--ink-700),0 0 0 4px var(--color-accent);
+    /* keycap */
+    --kbd-border:rgba(0,0,0,.3);
+    /* toast */
+    --toast-border:rgba(var(--amber-rgb),.30);
+    --toast-fg:var(--amber-200);
+  }
+
+  /* ============================================================
+     基础
+     ============================================================ */
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;overflow:hidden}
+  body{
+    background:var(--color-bg);color:var(--color-text);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  }
+  #cv{display:block;position:fixed;inset:0;width:100%;height:100%}
+
+  /* ============================================================
+     面板
+     ============================================================ */
+  .panel{
+    position:fixed;left:var(--space-4);top:var(--space-4);width:var(--panel-width);
+    padding:var(--panel-pad);border-radius:var(--panel-radius);
+    background:var(--color-surface);
+    border:1px solid var(--color-line);
+    box-shadow:0 8px 24px rgba(0,0,0,.35);
+    user-select:none;
+  }
+  .title{display:flex;align-items:center;gap:var(--space-2);font-size:var(--font-md);font-weight:500;margin:0 0 var(--space-1)}
+  .mark{width:16px;height:16px;flex:none}
+  .mark .ta{fill:none;stroke:var(--color-series-a);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+  .mark .tb{fill:none;stroke:var(--color-series-b);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+  .mark .meet{fill:var(--color-accent)}
+  .sub{font-size:var(--font-sm);color:var(--color-text-3);margin:0 0 var(--space-4);line-height:var(--leading-relaxed)}
+
+  /* ============================================================
+     按钮（default / hover / active / focus / on / primary）
+     ============================================================ */
+  .btns{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-2);margin-bottom:var(--space-4)}
+  button{
+    font:inherit;font-size:var(--font-base);color:var(--btn-fg);cursor:pointer;
+    height:var(--btn-h);padding:0 var(--space-2);
+    background:var(--btn-bg);
+    border:1px solid var(--btn-border);
+    border-radius:var(--btn-radius);
+    transition:background-color var(--duration-fast) var(--ease),
+               color var(--duration-fast) var(--ease),
+               border-color var(--duration-fast) var(--ease),
+               box-shadow var(--duration-fast) var(--ease);
+  }
+  button:hover{background:var(--btn-bg-hover);color:var(--btn-fg-hover)}
+  button:active{transform:scale(.97)}
+  button:focus-visible{outline:none;box-shadow:var(--btn-focus-ring)}
+  button.primary{
+    grid-column:1/-1;
+    background:var(--btn-primary-bg);border-color:transparent;color:var(--btn-primary-fg);font-weight:500;
+  }
+  button.primary:hover{background:var(--btn-primary-bg-hover)}
+  button.on{background:var(--btn-bg-on);color:var(--color-text);border-color:var(--btn-border-on)}
+  .kbd{font-size:var(--font-xs);opacity:.75;border:1px solid var(--kbd-border);border-radius:var(--radius-sm);padding:0 var(--space-1);margin-left:var(--space-1)}
+
+  /* ============================================================
+     统计与图例
+     ============================================================ */
+  .stats{display:grid;gap:var(--space-2);font-size:var(--font-base)}
+  .row{display:flex;justify-content:space-between;align-items:center;min-height:20px}
+  .row span{color:var(--color-text-3)}
+  .row b{font-variant-numeric:tabular-nums;font-weight:500;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+
+  .legend{display:flex;gap:var(--space-4);margin-top:var(--space-4);padding-top:var(--space-3);
+          border-top:1px solid var(--color-line);font-size:var(--font-sm);color:var(--color-text-2)}
+  .legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px}
+
+  /* ============================================================
+     相遇通知（浮在面板外，不占面板空间）
+     ============================================================ */
+  .toast{
+    position:absolute;left:var(--space-4);right:var(--space-4);top:100%;
+    margin-top:var(--space-2);
+    padding:var(--space-2) var(--space-3);border-radius:var(--radius-md);
+    font-size:var(--font-sm);line-height:var(--leading-tight);
+    background:rgba(var(--panel-solid),.96);
+    border:1px solid var(--toast-border);color:var(--toast-fg);
+    box-shadow:0 8px 24px rgba(0,0,0,.35);
+    opacity:0;--toast-rise:4px;transform:translateY(var(--toast-rise));
+    transition:opacity var(--duration-normal) var(--ease),
+               transform var(--duration-normal) var(--ease);
+  }
+  .toast.show{opacity:1;transform:translateY(0)}
+  .toast::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;
+                 background:var(--color-accent);margin-right:6px;vertical-align:1px}
+
+  /* ============================================================
+     响应式与无障碍
+     ============================================================ */
+  /* 小屏：面板沉底、全宽，统计两列，toast 浮到面板上方 */
+  @media (max-width:560px){
+    .panel{left:var(--space-3);right:var(--space-3);top:auto;bottom:var(--space-3);width:auto}
+    .sub{margin-bottom:var(--space-3)}
+    .stats{grid-template-columns:1fr 1fr;gap:var(--space-2) var(--space-4)}
+    .toast{top:auto;bottom:100%;margin-top:0;margin-bottom:var(--space-2);--toast-rise:-4px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    button,.toast{transition:none}
+  }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<div class="panel">
+  <div class="title">
+    <svg class="mark" viewBox="0 0 16 16" aria-hidden="true">
+      <path class="ta" d="M2 14 L6 10 L8 8"/>
+      <path class="tb" d="M14 2 L10 6 L8 8"/>
+      <circle class="meet" cx="8" cy="8" r="1.6"/>
+    </svg>
+    两个随机游走的人
+  </div>
+  <div class="sub">两人从同一点出发，每步随机走一格，轨迹一直保留。</div>
+
+  <div class="btns">
+    <button id="stepBtn" class="primary">走一步<span class="kbd">空格</span></button>
+    <button id="autoBtn" aria-pressed="false">自动</button>
+    <button id="resetBtn">重置</button>
+  </div>
+
+  <div class="stats">
+    <div class="row"><span>步数</span><b id="sSteps">0</b></div>
+    <div class="row"><span>直线距离</span><b id="sDist">0.0</b></div>
+    <div class="row"><span>相遇次数</span><b id="sMeet">0</b></div>
+    <div class="row"><span>最近一次相遇</span><b id="sLast">—</b></div>
+  </div>
+
+  <div class="legend">
+    <div><i style="background:var(--color-series-a)"></i>甲</div>
+    <div><i style="background:var(--color-series-b)"></i>乙</div>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---------------- 基础引用 ---------------- */
+  const cv       = document.getElementById('cv');
+  const ctx      = cv.getContext('2d');
+  const sSteps   = document.getElementById('sSteps');
+  const sDist    = document.getElementById('sDist');
+  const sMeet    = document.getElementById('sMeet');
+  const sLast    = document.getElementById('sLast');
+  const toastEl  = document.getElementById('toast');
+  const stepBtn  = document.getElementById('stepBtn');
+  const autoBtn  = document.getElementById('autoBtn');
+  const resetBtn = document.getElementById('resetBtn');
+
+  /* ---------------- 设计 token（单一来源，读自 CSS） ---------------- */
+  const rootStyle = getComputedStyle(document.documentElement);
+  function tok(name, fallback) {
+    const v = rootStyle.getPropertyValue(name).trim();
+    return v || fallback;
+  }
+
+  /* ---------------- 常量 & 状态 ---------------- */
+  const DIRS = [[0, 1], [0, -1], [-1, 0], [1, 0]]; // 上 下 左 右
+  const COLOR_A   = tok('--color-series-a', '#4ea8ff'); // 甲
+  const COLOR_B   = tok('--color-series-b', '#ff7a59'); // 乙
+  const MEET_RGB  = tok('--amber-rgb', '242,178,90');   // 相遇脉冲
+  const BG_CENTER = tok('--ink-800', '#0e1016');        // 画布晕影中心
+  const BG_EDGE   = tok('--ink-950', '#090b10');        // 画布晕影边缘
+  const GRID_LINE = tok('--white-5', 'rgba(255,255,255,.05)');
+  const ORIGIN_MK = tok('--white-30', 'rgba(255,255,255,.30)');
+  const DOT_RING  = tok('--dot-ring', 'rgba(9,11,16,.45)');
+  const REDUCED   = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const AUTO_DELAY = 130;    // 自动模式每步间隔(ms)
+
+  let DPR = 1, W = 0, H = 0;
+
+  let A, B;                       // 两条轨迹（点数组）
+  let steps, meetings, lastMeet;  // 统计
+  let flash;                      // 相遇闪烁动画进度
+  let bounds;                     // 包围盒，用于自动缩放
+
+  let rafId = null;               // requestAnimationFrame id
+  let auto = false;               // 自动模式
+  let lastAutoTime = 0;
+  let toastTimer = null;
+
+  /* ---------------- 初始化 / 重置 ---------------- */
+  function reset() {
+    A = [{ x: 0, y: 0 }];
+    B = [{ x: 0, y: 0 }];
+    steps = 0;
+    meetings = 0;
+    lastMeet = null;
+    flash = 0;
+    bounds = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
+    updateUI();
+    kick();
+  }
+
+  /* ---------------- 走一步（纯逻辑） ---------------- */
+  function doStep() {
+    const a = A[A.length - 1];
+    const b = B[B.length - 1];
+    const da = DIRS[(Math.random() * 4) | 0];
+    const db = DIRS[(Math.random() * 4) | 0];
+
+    const na = { x: a.x + da[0], y: a.y + da[1] };
+    const nb = { x: b.x + db[0], y: b.y + db[1] };
+
+    A.push(na);
+    B.push(nb);
+    growBounds(na);
+    growBounds(nb);
+
+    steps++;
+
+    // 同一时刻站在同一个格子上 = 相遇
+    if (na.x === nb.x && na.y === nb.y) {
+      meetings++;
+      lastMeet = steps;
+      if (!REDUCED) flash = 1;
+      showToast('第 ' + steps + ' 步，两人再次相遇');
+    }
+
+    updateUI();
+  }
+
+  function growBounds(p) {
+    if (p.x < bounds.minX) bounds.minX = p.x;
+    if (p.x > bounds.maxX) bounds.maxX = p.x;
+    if (p.y < bounds.minY) bounds.minY = p.y;
+    if (p.y > bounds.maxY) bounds.maxY = p.y;
+  }
+
+  /* ---------------- UI 数据 ---------------- */
+  function updateUI() {
+    const a = A[A.length - 1];
+    const b = B[B.length - 1];
+    sSteps.textContent = steps;
+    sDist.textContent  = Math.hypot(a.x - b.x, a.y - b.y).toFixed(1);
+    sMeet.textContent  = meetings;
+    sLast.textContent  = lastMeet === null ? '—' : '第 ' + lastMeet + ' 步';
+  }
+
+  function showToast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 2200);
+  }
+
+  /* ---------------- 画布尺寸 ---------------- */
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    cv.width  = Math.round(W * DPR);
+    cv.height = Math.round(H * DPR);
+    cv.style.width  = W + 'px';
+    cv.style.height = H + 'px';
+    kick();
+  }
+
+  /* ---------------- 绘制 ---------------- */
+  function draw() {
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    // 背景（中性暗色，轻微晕影）
+    const bg = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * 0.75);
+    bg.addColorStop(0, BG_CENTER);
+    bg.addColorStop(1, BG_EDGE);
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    /* ---- 计算自适应坐标变换 ---- */
+    const pad   = Math.min(W, H) * 0.10 + 40;
+    const spanX = Math.max(bounds.maxX - bounds.minX, 1);
+    const spanY = Math.max(bounds.maxY - bounds.minY, 1);
+
+    let cell = Math.min((W - 2 * pad) / spanX, (H - 2 * pad) / spanY);
+    cell = Math.max(2, Math.min(cell, 64));   // 限制缩放范围
+
+    const midX = (bounds.minX + bounds.maxX) / 2;
+    const midY = (bounds.minY + bounds.maxY) / 2;
+    const ox = W / 2 - midX * cell;
+    const oy = H / 2 + midY * cell;           // 屏幕 y 轴向下，所以取正
+
+    const px = function (x) { return ox + x * cell; };
+    const py = function (y) { return oy - y * cell; };
+
+    /* ---- 网格 ---- */
+    if (cell >= 16) {
+      ctx.beginPath();
+      for (let x = Math.floor(bounds.minX); x <= Math.ceil(bounds.maxX); x++) {
+        const s = Math.round(px(x)) + 0.5;
+        ctx.moveTo(s, 0); ctx.lineTo(s, H);
+      }
+      for (let y = Math.floor(bounds.minY); y <= Math.ceil(bounds.maxY); y++) {
+        const s = Math.round(py(y)) + 0.5;
+        ctx.moveTo(0, s); ctx.lineTo(W, s);
+      }
+      ctx.strokeStyle = GRID_LINE;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    /* ---- 起点 ---- */
+    ctx.beginPath();
+    ctx.arc(px(0), py(0), 4, 0, Math.PI * 2);
+    ctx.strokeStyle = ORIGIN_MK;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    /* ---- 轨迹 ---- */
+    strokePath(A, COLOR_A, 0.55);
+    strokePath(B, COLOR_B, 0.65);
+
+    /* ---- 相遇脉冲 ---- */
+    if (flash > 0) {
+      const p = A[A.length - 1];
+      const t = 1 - flash;
+      ctx.beginPath();
+      ctx.arc(px(p.x), py(p.y), 9 + t * 50, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(' + MEET_RGB + ',' + (flash * 0.85).toFixed(3) + ')';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    /* ---- 当前位置 ---- */
+    const r = Math.max(5, Math.min(9, cell * 0.22));
+    drawDot(A[A.length - 1], COLOR_A, r);
+    drawDot(B[B.length - 1], COLOR_B, r);
+
+    /* ---- 内部工具函数 ---- */
+    function strokePath(path, color, alpha) {
+      if (path.length < 2) return;
+      ctx.beginPath();
+      ctx.moveTo(px(path[0].x), py(path[0].y));
+      for (let i = 1; i < path.length; i++) {
+        ctx.lineTo(px(path[i].x), py(path[i].y));
+      }
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.8;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    function drawDot(p, color, rad) {
+      const x = px(p.x), y = py(p.y);
+      ctx.beginPath();
+      ctx.arc(x, y, rad, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = DOT_RING;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(x, y, rad * 0.42, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.fill();
+    }
+  }
+
+  /* ---------------- 动画循环 ---------------- */
+  function kick() {
+    if (rafId === null) rafId = requestAnimationFrame(loop);
+  }
+
+  function loop(t) {
+    rafId = null;
+
+    if (auto && t - lastAutoTime >= AUTO_DELAY) {
+      lastAutoTime = t;
+      doStep();
+    }
+
+    if (flash > 0) {
+      flash *= 0.93;
+      if (flash < 0.01) flash = 0;
+    }
+
+    draw();
+
+    if (auto || flash > 0) rafId = requestAnimationFrame(loop);
+  }
+
+  /* ---------------- 交互 ---------------- */
+  stepBtn.addEventListener('click', function () {
+    doStep();
+    kick();
+  });
+
+  autoBtn.addEventListener('click', function () {
+    auto = !auto;
+    autoBtn.classList.toggle('on', auto);
+    autoBtn.setAttribute('aria-pressed', auto ? 'true' : 'false');
+    autoBtn.textContent = auto ? '暂停' : '自动';
+    lastAutoTime = 0;
+    kick();
+  });
+
+  resetBtn.addEventListener('click', function () {
+    auto = false;
+    autoBtn.classList.remove('on');
+    autoBtn.setAttribute('aria-pressed', 'false');
+    autoBtn.textContent = '自动';
+    reset();
+  });
+
+  window.addEventListener('keydown', function (e) {
+    if (e.code === 'Space') {
+      e.preventDefault();
+      doStep();
+      kick();
+    }
+  });
+
+  window.addEventListener('resize', resize);
+
+  /* ---------------- 启动 ---------------- */
+  resize();
+  reset();
+})();
+</script>
+</body>
+</html>
